@@ -1,20 +1,27 @@
 const express = require("express");
 const router = express.Router();
-const gameController = require("../controllers/gameController");
 
-// 게임 상태 저장 (예: POST /api/game/save)
-router.post("/save", gameController.saveGame);
+// controllers/game/index.js 묶음 import
+const controllers = require("../controllers/game");
 
-// 게임 상태 불러오기 (예: GET /api/game/load)
-router.get("/load", gameController.loadGame);
 
-// 게임 초기화 (예: POST /api/game/reset)
-router.post("/reset", gameController.resetGame);
+// Rooms
+router.post("/rooms/create", controllers.state.createRoom);
+router.post("/rooms/join", controllers.state.joinRoom);
+router.delete("/rooms/:room_id", controllers.state.deleteRoom);
 
-// 게임 히스토리
-router.post("/replay", gameController.replayGame);
+// Game State (save/load/reset)
+router.post("/:room_id/save", controllers.state.saveGame);
+router.get("/:room_id/load", controllers.state.loadGame);
+router.post("/:room_id/reset", controllers.state.resetGame);
 
-// 이동가능한 좌표 표시
-router.post("/movable", gameController.getMovablePositions);
+// History
+router.get("/:room_id/replay", controllers.history.replayGame);
+
+// Movable Positions (rules)
+router.post("/movable", controllers.rules.getMovablePositions);
+
+// Pieces Status
+router.get("/pieces-status", controllers.piece.getPieceStatus);
 
 module.exports = router;
