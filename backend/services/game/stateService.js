@@ -40,23 +40,46 @@ exports.saveGame = async (roomId, boardState, turn, currentPlayer) => {
         [roomId]
     );
 
-    // 저장된 기록이 없다면 (첫 저장이면 통과)
     const savedTurn = state ? state.turn : null;
 
+    // 🟡 처음 저장(첫 턴)
+    if (!savedTurn) {
+        const nextTurn = turn === "player1" ? "player2" : "player1";
+
+        await pool.query(
+            `INSERT INTO game_state (room_id, board_state, turn)
+             VALUES (?, ?, ?)`,
+            [roomId, JSON.stringify(boardState), nextTurn]
+        );
+
+        await pool.query(
+            `INSERT INTO game_history (room_id, turn, board_state, current_player)
+             VALUES (?, ?, ?, ?)`,
+            [roomId, turn, JSON.stringify(boardState), currentPlayer]
+        );
+
+        return;
+    }
+
     // 2. 턴 검증
-    if (savedTurn && savedTurn !== currentPlayer) {
+    if (savedTurn !== currentPlayer) {
         const err = new Error("INVALID_TURN");
         err.code = "INVALID_TURN";
         throw err;
     }
 
-    // 3. 정상 저장
+    // 3. 다음 턴 계산
+    const nextTurn = turn === "player1" ? "player2" : "player1";
+
+    // 4. 정상 저장
     await pool.query(
-        `REPLACE INTO game_state (room_id, board_state, turn)
-         VALUES (?, ?, ?)`,
-        [roomId, JSON.stringify(boardState), turn]
+        `UPDATE game_state 
+         SET board_state = ?, turn = ?
+         WHERE room_id = ?`,
+        [JSON.stringify(boardState), nextTurn, roomId]
     );
 
+    // 5. 히스토리 기록
     await pool.query(
         `INSERT INTO game_history (room_id, turn, board_state, current_player)
          VALUES (?, ?, ?, ?)`,
