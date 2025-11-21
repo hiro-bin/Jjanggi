@@ -4,7 +4,7 @@ import { v4 as uuidv4 } from 'https://cdn.skypack.dev/uuid';
 import * as MockApi from './utils/mockApi.js';
 import ErrorHandler from './utils/errorHandler.js';
 
-const MOCK_MODE = true; // true: 백엔드 연결 없이 테스트
+const MOCK_MODE = false; // true: 백엔드 연결 없이 테스트
 
 class PlayScene extends Phaser.Scene {
 
@@ -173,7 +173,7 @@ class PlayScene extends Phaser.Scene {
                 updateBoardState(newBoardState);
             } else {
                 try {
-                    const response = await fetch('api/game/move', {
+                    const response = await fetch('https://exothermic-unglozed-clarine.ngrok-free.dev/api/game/move', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ pieceId: pieceId, to: targetCoords, board_state: this.board_state })
@@ -228,7 +228,7 @@ class PlayScene extends Phaser.Scene {
                     const { movablePositions } = await MockApi.mockGetMovable(selectedPieceObject);
                     this.movablePositions = movablePositions;
                 } else {
-                    const response = await fetch('/api/game/movable', {
+                    const response = await fetch('https://exothermic-unglozed-clarine.ngrok-free.dev/api/game/movable', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ piece: selectedPieceObject, board_state: this.board_state })
@@ -256,7 +256,7 @@ class PlayScene extends Phaser.Scene {
             }
 
             try {
-                const response = await fetch('/api/game/reset', {method: 'POST'});
+                const response = await fetch('https://exothermic-unglozed-clarine.ngrok-free.dev/api/game/reset', {method: 'POST'});
                 if (!response.ok) {
                     ErrorHandler.handleApiError('resetGame', { status: response.status, statusText: response.statusText });
                     throw new Error(`API Error`);
@@ -282,7 +282,7 @@ class PlayScene extends Phaser.Scene {
             }
 
             try {
-                const response = await fetch(`/api/game/${this.room.id}/status`, {
+                const response = await fetch(`https://exothermic-unglozed-clarine.ngrok-free.dev/api/game/${this.room.id}/status`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ status: newStatus })
@@ -330,7 +330,7 @@ class PlayScene extends Phaser.Scene {
             }
 
             try {
-                const response = await fetch('/api/game/rooms/join', {
+                const response = await fetch('https://exothermic-unglozed-clarine.ngrok-free.dev/api/game/rooms/join', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ room_id: joinInfo.room_id, player_id: joinInfo.player_id })
@@ -347,28 +347,52 @@ class PlayScene extends Phaser.Scene {
             }
         }
 
-        const createRoom = async() => {
-            if (MOCK_MODE) {
-                const { room_id } = await MockApi.mockCreateRoom();
-                this.room.id = room_id;
-                showNicknameModal();
-                return;
-            }
+        // const createRoom = async() => {
+        //     if (MOCK_MODE) {
+        //         const { room_id } = await MockApi.mockCreateRoom();
+        //         this.room.id = room_id;
+        //         showNicknameModal();
+        //         return;
+        //     }
 
-            try {
-                const response = await fetch('/api/game/rooms/create', {method: 'POST'});
-                if(!response.ok) {
-                    ErrorHandler.handleApiError('createRoom', { status: response.status, statusText: response.statusText });
-                    throw new Error(`API Error`);
-                }
-                const { room_id } = await response.json();
-                this.room.id = room_id;
-                console.log(`룸이 생성되었습니다. ID: ${this.room.id}`);
-                showNicknameModal();
-            } catch (error) {
-                ErrorHandler.handleUnexpectedError('createRoom', error);
-            }
+        //     try {
+        //         console.log('hi');
+        //         const response = await fetch('https://exothermic-unglozed-clarine.ngrok-free.dev/api/game/rooms/create', {method: 'POST'});
+        //         if(!response.ok) {
+        //             ErrorHandler.handleApiError('createRoom', { status: response.status, statusText: response.statusText });
+        //             throw new Error(`API Error`);
+        //         }
+        //         const { room_id } = await response.json();
+        //         scene.room.id = room_id;
+        //         //this.room.id = room_id;
+        //         console.log(`룸이 생성되었습니다. ID: ${this.room.id}`);
+        //         showNicknameModal();
+        //     } catch (error) {
+        //         ErrorHandler.handleUnexpectedError('createRoom', error);
+        //     }
+        // }
+
+        const createRoom = async () => {
+    try {
+        const response = await fetch(
+            'https://exothermic-unglozed-clarine.ngrok-free.dev/api/game/rooms/create',
+            { method: 'POST' }
+        );
+        if (!response.ok) {
+            ErrorHandler.handleApiError('createRoom', {
+                status: response.status,
+                statusText: response.statusText
+            });
+            throw new Error(`API Error`);
         }
+        const { room_id } = await response.json();
+    this.room.id = room_id;
+        console.log(`룸이 생성되었습니다. ID: ${this.room.id}`);
+        showNicknameModal();
+    } catch (error) {
+        ErrorHandler.handleUnexpectedError('createRoom', error);
+    }
+};
 
         // --- 이벤트 리스너 설정 ---
         nicknameForm.addEventListener('submit', (event) => {
@@ -410,7 +434,10 @@ class PlayScene extends Phaser.Scene {
         });
 
         if (newGameButton) {
-            newGameButton.addEventListener('click', () => createRoom());
+            newGameButton.addEventListener('click', (e) => {
+                e.preventDefault();
+                createRoom()
+            });
         }
 
         createRoom();

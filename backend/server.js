@@ -1,20 +1,58 @@
 
+// const express = require("express");
+// const cors = require("cors");
+// require("dotenv").config();
+// const app = express();
+// const path = require("path");
+
+// app.use(cors());
+// app.use(express.json());
+
+// // ✅ 프론트엔드 정적 파일 제공 설정
+// app.use(express.static(path.join(__dirname, "../frontend/public")));
+// app.use('/src', express.static(path.join(__dirname, "../frontend/src")));
+// app.use('/libs/phaser', express.static(path.join(__dirname, '../node_modules/phaser/dist')));
+
+// // 기본 테스트 라우트
+// // app.get("/", (req, res) => {
+// //     res.send("✅ 장기 서버 실행 중!");
+// // });
+
+// const gameRouter = require("./routes/gameRouter");
+// app.use("/api/game", gameRouter);
+
+
+// // 포트 설정 (.env에서 불러오기)
+// const PORT = process.env.PORT || 3000;
+
+// // 서버 실행
+// app.listen(PORT, () => {
+//     console.log(`🚀 Server is running on http://localhost:${PORT}`);
+// });
+
+
 const express = require("express");
 require("dotenv").config();
 const app = express();
 const path = require("path");
+const cors = require("cors");
 
 app.use(express.json());
 
+// --- CORS 설정 강화 ---
+app.use(cors({
+    origin: "*",
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type"],
+}));
+
 // ✅ 프론트엔드 정적 파일 제공 설정
-app.use(express.static(path.join(__dirname, "../frontend/public")));
-app.use('/src', express.static(path.join(__dirname, "../frontend/src")));
-app.use('/libs/phaser', express.static(path.join(__dirname, '../node_modules/phaser/dist')));
+app.use(express.static(path.join(__dirname, "../frontend")));
 
 // 기본 테스트 라우트
-// app.get("/", (req, res) => {
-//     res.send("✅ 장기 서버 실행 중!");
-// });
+app.get("/", (req, res) => {
+    res.send("✅ 장기 서버 실행 중!");
+});
 
 const gameRouter = require("./routes/gameRouter");
 app.use("/api/game", gameRouter);
