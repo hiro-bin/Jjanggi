@@ -37,7 +37,19 @@ body {
     flex-grow: 1;
 }
 
+.button-board {
+    margin-right: 10px;
+}
+
 .new-game {
+    width: 100px;
+}
+
+.save-game {
+    width: 100px;
+}
+
+.load-game {
     width: 100px;
 }
 

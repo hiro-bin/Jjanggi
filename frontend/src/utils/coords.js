@@ -6,6 +6,13 @@ export const getPixelCoords = (gridX, gridY, gridConfig) => {
     };
 };
 
+export const getGridCoordsFromPixels = (pixelX, pixelY, gridConfig) => {
+    const { gridTopLeftX, gridTopLeftY, tileWidth, tileHeight } = gridConfig;
+    const x = Math.round((pixelX - gridTopLeftX) / tileWidth);
+    const y = Math.round((pixelY - gridTopLeftY) / tileHeight);
+    return { x, y };
+}
+
 export const getPieceAssetKey = (piece) => {
     const type = piece.type;
     const owner = piece.owner;

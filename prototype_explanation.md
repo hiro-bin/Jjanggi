@@ -84,3 +84,21 @@ Fixed two critical bugs that prevented the movable position markers from being d
     *   Added the missing `this.displayMovablePositions()` call after successfully fetching movable positions from the server. This ensures the markers are drawn as intended.
 
 These fixes resolve the reported issues, making the movable position markers functional and stable.
+
+## PlayScene.js Updates (2025년 11월 21일)
+
+### Wood Background Implementation
+
+**Description:**
+Added a wooden texture background to the main game scene to enhance visual appeal.
+
+**Changes Made:**
+
+1.  **Asset Loading:**
+    *   In `preload()` within `frontend/src/PlayScene.js`, `wood.png` was added to the `imageFiles` array to be loaded by Phaser's asset loader.
+
+2.  **Background Creation:**
+    *   In `create()`, a new background image was created using `this.add.image(0, 0, 'wood')`.
+    *   The origin was set to the top-left corner using `.setOrigin(0, 0)`.
+    *   The image was scaled to fill the entire game screen by setting `displayWidth` and `displayHeight` to the game's width and height.
+    *   This was added before the main game board to ensure it renders in the background.
