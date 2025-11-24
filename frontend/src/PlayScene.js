@@ -1,446 +1,295 @@
 import * as Phaser from 'phaser';
-import { getPixelCoords, getPieceAssetKey, getPieceOwner, getGridCoordsFromPixels } from './utils/coords.js';
-import { v4 as uuidv4 } from 'https://cdn.skypack.dev/uuid';
-import * as MockApi from './utils/mockApi.js';
-import ErrorHandler from './utils/errorHandler.js';
-
-const MOCK_MODE = false; // true: 백엔드 연결 없이 테스트
+import { getPixelCoords, getPieceAssetKey, getGridCoordsFromPixels } from './utils/gameUtils.js';
+import * as GameApi from './utils/gameApi.js';
+import { initializeUI } from './utils/ui.js';
 
 class PlayScene extends Phaser.Scene {
 
     constructor() {
         super('PlayScene');
         
-        this.room = {
-            id: null,
-            status: null,
-            players: [],
-        };
-
+        this.room = { id: null, status: null, players: [] };
+        this.board_state = { turn: null, pieces: { player1: [], player2: [] }};
+        this.finalBoardState = null;
+        this.winnerInfo = null;
+        
         this.selectedPieceId = null;
         this.movablePositions = [];
         this.movableMarkers = null;
 
-        this.board_state = {
-            turn: null,
-            pieces: {
-                player1: [],
-                player2: []
-            }
-        };
+        this.gameOver = false;
+        this.isReplayMode = false;
+        
+        this.gameHistory = [];
+        this.currentHistoryIndex = -1;
+
+        this.uiManager = null;
     }
 
     preload() {
         this.load.setPath('assets/');
-
         const imageFiles = [
-            'board.png', 'wood.png',
+            'board.png',
             'chocha.png', 'chojol.png', 'choma.png', 'chopo.png', 'chosa.png', 'chosang.png', 'chowang.png',
             'hancha.png', 'hanjol.png', 'hanma.png', 'hanpo.png', 'hansa.png', 'hansang.png', 'hanwang.png'
         ];
-
-        imageFiles.forEach(file => {
-            const key = file.replace('.png', '');
-            this.load.image(key, file);
-        });
+        imageFiles.forEach(file => this.load.image(file.replace('.png', ''), file));
     }
 
     create() {
-        // --- 변수 및 기본 설정 ---
-        let playerId = localStorage.getItem('myPlayerId');
-        if(!playerId) {
-            playerId = uuidv4();
-            localStorage.setItem('myPlayerId', playerId);
-        }
-
         const { width, height } = this.sys.game.config;
         this.pieceSpriteMap = {};
 
-        let bg = this.add.image(0, 0, 'wood').setOrigin(0, 0);
-        bg.displayWidth = width;
-        bg.displayHeight = height;
+        let board = this.add.image(width / 2, height / 2, 'board').setInteractive();
+        board.setScale(Math.min(width / board.width, height / board.height));
 
-        let board = this.add.image(width / 2, height / 2, 'board');
-        board.setInteractive();
-        board.setScale(Math.min(width / board.width, height / board.height)*0.9);
-
-        const gridWidth = board.displayWidth;
-        const gridHeight = board.displayHeight;
-        const tileWidth = gridWidth / 8;
-        const tileHeight = gridHeight / 9;
-        const gridTopLeftX = (width - gridWidth) / 2;
-        const gridTopLeftY = (height - gridHeight) / 2;
-
-        const gridConfig = { gridTopLeftX, gridTopLeftY, tileWidth, tileHeight };
-
-        const newGameButton = document.querySelector('.new-game');
-        const nicknameModal = document.querySelector('#nickname-modal');
-        const nicknameForm = document.querySelector('#nickname-form');
-        const nicknameInput = document.querySelector('#nickname-input');
-
-        // --- DOM & UI 핸들러 ---
-        const showNicknameModal = () => {
-            nicknameModal.classList.add('show');
-            nicknameInput.focus();
-        };
-
-        const hideNicknameModal = () => {
-            nicknameModal.classList.remove('show');
-        };
-
-        // --- 렌더링 및 화면 업데이트 ---
-        const renderBoard = () => {
-            if (!this.board_state) return;
-            Object.values(this.pieceSpriteMap).forEach(sprite => sprite.destroy());
-            this.pieceSpriteMap = {};
-            const allPieces = [ ...this.board_state.pieces.player1, ...this.board_state.pieces.player2 ];
-            allPieces.forEach(piece => {
-                if (piece.alive) {
-                    const assetKey = getPieceAssetKey(piece);
-                    if (assetKey) {
-                        const pixelCoords = getPixelCoords(piece.x, piece.y, gridConfig);
-                        const sprite = this.add.sprite(pixelCoords.x, pixelCoords.y, assetKey);
-                        this.pieceSpriteMap[piece.id] = sprite;
-                        sprite.setInteractive();
-                        sprite.id = piece.id;
-                    }
-                }
-            });
-        };
-
-        const updateTurnDisplay = () => {
-            const turnDisplay = document.querySelector('.turn-name');
-            if (!turnDisplay) return;
-            
-            if (!this.board_state || !this.board_state.turn || !this.room.players || this.room.players.length === 0) {
-                turnDisplay.innerText = '대기 중...';
-                turnDisplay.style.color = 'black';
-                return;
-            }
-
-            const currentPlayerTurnRole = this.board_state.turn; // 'player1' or 'player2'
-            const currentPlayer = this.room.players.find(p => p.role === currentPlayerTurnRole);
-
-            const nickname = currentPlayer ? currentPlayer.nickname : '';
-            
-            let turnText = '';
-            let turnColor = 'black';
-
-            if (currentPlayerTurnRole === 'player1') {
-                turnText = `${nickname} (초)`;
-                turnColor = 'green';
-            } else if (currentPlayerTurnRole === 'player2') {
-                turnText = `${nickname} (한)`;
-                turnColor = 'red';
-            } else {
-                turnText = '대기 중...';
-            }
-
-            turnDisplay.innerText = turnText;
-            turnDisplay.style.color = turnColor;
-        };
-
-        const displayMovablePositions = () => {
-            if (this.movableMarkers) {
-                this.movableMarkers.destroy();
-            }
-            this.movableMarkers = this.add.graphics();
-            this.movableMarkers.fillStyle(0x0000ff, 0.4);
-            const radius = tileWidth / 4;
-            this.movablePositions.forEach((pos) => {
-                const pixelCoords = getPixelCoords(pos.x, pos.y, gridConfig);
-                this.movableMarkers.fillCircle(pixelCoords.x, pixelCoords.y, radius);
-            });
-        };
-
-        // --- 상태 관리 및 핵심 로직 ---
-        const updateBoardState = (newBoardState) => {
-            if(!newBoardState) {
-                ErrorHandler.handleGameLogicWarning('updateBoardState', { message: '업데이트할 새로운 board_state가 없습니다.' });
-                return;
-            }
-            this.board_state = newBoardState;
-            renderBoard();
-            updateTurnDisplay();
-        }
-
-        const movePiece = async (pieceId, targetCoords) => {
-            if (MOCK_MODE) {
-                const newBoardState = await MockApi.mockMovePiece(this.board_state, pieceId, targetCoords);
-                this.selectedPieceId = null;
-                this.movablePositions = [];
-                displayMovablePositions();
-                updateBoardState(newBoardState);
-            } else {
-                try {
-                    const response = await fetch('https://exothermic-unglozed-clarine.ngrok-free.dev/api/game/move', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ pieceId: pieceId, to: targetCoords, board_state: this.board_state })
-                    });
-                    if(!response.ok) {
-                        ErrorHandler.handleApiError('movePiece', { status: response.status, statusText: response.statusText });
-                        throw new Error('API Error');
-                    }
-                    const newBoardState = await response.json();
-                    updateBoardState(newBoardState);
-                } catch(error) {
-                    ErrorHandler.handleUnexpectedError('movePiece', error);
-                }
-            }
-        };
-
-        const clickPiece = async(pointer, clickedSprite) => {
-            const clickedPieceId = clickedSprite.id;
-            
-            if (this.selectedPieceId && this.pieceSpriteMap[this.selectedPieceId]) {
-                this.pieceSpriteMap[this.selectedPieceId].setScale(1);
-            }
-
-            if (this.selectedPieceId === clickedPieceId) {
-                this.selectedPieceId = null;
-                this.movablePositions = [];
-                displayMovablePositions();
-                return;
-            }
-            
-            const owner = getPieceOwner(clickedPieceId);
-            if (owner !== this.board_state.turn) {
-                ErrorHandler.handleGameLogicWarning('clickPiece', { 
-                    message: '잘못된 턴에 기물 이동을 시도했습니다.',
-                    expected: this.board_state.turn,
-                    actual: owner 
-                });
-                this.selectedPieceId = null;
-                return;
-            }
-
-            this.selectedPieceId = clickedPieceId;
-            if (this.pieceSpriteMap[this.selectedPieceId]) {
-                this.pieceSpriteMap[this.selectedPieceId].setScale(1.1);
-            }
-
-            const allPieces = [ ...this.board_state.pieces.player1, ...this.board_state.pieces.player2 ];
-            const selectedPieceObject = allPieces.find(p => p.id === this.selectedPieceId);
-
-            try {
-                if (MOCK_MODE) {
-                    const { movablePositions } = await MockApi.mockGetMovable(selectedPieceObject);
-                    this.movablePositions = movablePositions;
-                } else {
-                    const response = await fetch('https://exothermic-unglozed-clarine.ngrok-free.dev/api/game/movable', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ piece: selectedPieceObject, board_state: this.board_state })
-                    });
-                    if (!response.ok) {
-                        ErrorHandler.handleApiError('clickPiece', { status: response.status, statusText: response.statusText });
-                        throw new Error(`API Error`);
-                    }
-                    const data = await response.json();
-                    this.movablePositions = data.movablePositions;
-                }
-                displayMovablePositions();
-            } catch(error) {
-                ErrorHandler.handleUnexpectedError('clickPiece', error);
-                this.movablePositions = [];
-                displayMovablePositions();
-            }
-        };
-
-        // --- 초기화 및 게임 흐름 ---
-        const resetGame = async () => {
-            if (MOCK_MODE) {
-                const { board_state } = await MockApi.mockResetGame();
-                return board_state;
-            }
-
-            try {
-                const response = await fetch('https://exothermic-unglozed-clarine.ngrok-free.dev/api/game/reset', {method: 'POST'});
-                if (!response.ok) {
-                    ErrorHandler.handleApiError('resetGame', { status: response.status, statusText: response.statusText });
-                    throw new Error(`API Error`);
-                }
-                const data = await response.json();
-                return data.board_state;
-            } catch(error) {
-                ErrorHandler.handleUnexpectedError('resetGame', error);
-                return null;
-            }
-        };
-
-        const setStatus = async (newStatus) => {
-            if (MOCK_MODE) {
-                const { status } = await MockApi.mockSetStatus(newStatus);
-                this.room.status = status;
-                return;
-            }
-
-            if (!this.room || !this.room.id) {
-                ErrorHandler.handleGameLogicWarning('setStatus', { message: "룸 정보가 없어 상태를 변경할 수 없습니다." });
-                return;
-            }
-
-            try {
-                const response = await fetch(`https://exothermic-unglozed-clarine.ngrok-free.dev/api/game/${this.room.id}/status`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ status: newStatus })
-                });
-                if (!response.ok) {
-                    ErrorHandler.handleApiError('setStatus', { status: response.status, statusText: response.statusText });
-                    throw new Error(`API Error`);
-                }
-                const updatedRoom = await response.json();
-                this.room = updatedRoom;
-                console.log(`룸 상태가 서버에 의해 '${this.room.status}'(으)로 업데이트되었습니다.`);
-            } catch (error) {
-                ErrorHandler.handleUnexpectedError('setStatus', error);
-            }
-        };
+        const boardPaddingX = 50, boardPaddingY = 30;
+        const scaledPaddingX = boardPaddingX * board.scale;
+        const scaledPaddingY = boardPaddingY * board.scale;
+        const gridTopLeftX = (width - board.displayWidth) / 2 + scaledPaddingX;
+        const gridTopLeftY = (height - board.displayHeight) / 2 + scaledPaddingY;
+        const gridWidth = board.displayWidth - (scaledPaddingX * 2);
+        const gridHeight = board.displayHeight - (scaledPaddingY * 2);
         
-        const handleGameStart = async () => {
-            if (this.room.players.length === 2) {
-                console.log("두 명의 플레이어가 모두 입장했습니다. 게임을 시작합니다.");
-                try {
-                    const newBoardState = await resetGame();
-                    updateBoardState(newBoardState);
-                    await setStatus('playing');
-                } catch (error) {
-                    ErrorHandler.handleUnexpectedError('handleGameStart', error);
-                }
-            } else {
-                console.log("아직 플레이어가 모두 입장하지 않았습니다. 현재 인원:", this.room.players.length);
-            }
+        this.gridConfig = { 
+            gridTopLeftX, gridTopLeftY, 
+            tileWidth: gridWidth / 8, 
+            tileHeight: gridHeight / 9 
         };
 
-        const joinRoom = async(joinInfo) => {
-            if (MOCK_MODE) {
-                const { room } = await MockApi.mockJoinRoom(joinInfo);
-                
-                // MockApi가 반환한 플레이어 목록에서 현재 플레이어를 찾아 닉네임을 주입합니다.
-                const myPlayer = room.players.find(p => p.id === joinInfo.player_id);
-                if (myPlayer) {
-                    myPlayer.nickname = joinInfo.nickname;
-                }
-
-                this.room = room;
-                handleGameStart();
-                return;
-            }
-
-            try {
-                const response = await fetch('https://exothermic-unglozed-clarine.ngrok-free.dev/api/game/rooms/join', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ room_id: joinInfo.room_id, player_id: joinInfo.player_id })
-                });
-                if(!response.ok) {
-                    ErrorHandler.handleApiError('joinRoom', { status: response.status, statusText: response.statusText });
-                    throw new Error(`API Error`);
-                }
-                const { room } = await response.json();
-                this.room = room;
-                handleGameStart();
-            } catch (error) {
-                ErrorHandler.handleUnexpectedError('joinRoom', error);
-            }
-        }
-
-        // const createRoom = async() => {
-        //     if (MOCK_MODE) {
-        //         const { room_id } = await MockApi.mockCreateRoom();
-        //         this.room.id = room_id;
-        //         showNicknameModal();
-        //         return;
-        //     }
-
-        //     try {
-        //         console.log('hi');
-        //         const response = await fetch('https://exothermic-unglozed-clarine.ngrok-free.dev/api/game/rooms/create', {method: 'POST'});
-        //         if(!response.ok) {
-        //             ErrorHandler.handleApiError('createRoom', { status: response.status, statusText: response.statusText });
-        //             throw new Error(`API Error`);
-        //         }
-        //         const { room_id } = await response.json();
-        //         scene.room.id = room_id;
-        //         //this.room.id = room_id;
-        //         console.log(`룸이 생성되었습니다. ID: ${this.room.id}`);
-        //         showNicknameModal();
-        //     } catch (error) {
-        //         ErrorHandler.handleUnexpectedError('createRoom', error);
-        //     }
-        // }
-
-        const createRoom = async () => {
-    try {
-        const response = await fetch(
-            'https://exothermic-unglozed-clarine.ngrok-free.dev/api/game/rooms/create',
-            { method: 'POST' }
-        );
-        if (!response.ok) {
-            ErrorHandler.handleApiError('createRoom', {
-                status: response.status,
-                statusText: response.statusText
-            });
-            throw new Error(`API Error`);
-        }
-        const { room_id } = await response.json();
-    this.room.id = room_id;
-        console.log(`룸이 생성되었습니다. ID: ${this.room.id}`);
-        showNicknameModal();
-    } catch (error) {
-        ErrorHandler.handleUnexpectedError('createRoom', error);
-    }
-};
-
-        // --- 이벤트 리스너 설정 ---
-        nicknameForm.addEventListener('submit', (event) => {
-            event.preventDefault();
-            const nickname = nicknameInput.value;
-            if (nickname) {
-                console.log(`입력된 닉네임: ${nickname}`);
-                hideNicknameModal();
-                joinRoom({
-                    room_id: this.room.id,
-                    player_id: playerId,
-                    nickname: nickname
-                });
-            }
-        });
+        this.uiManager = initializeUI(this);
 
         board.on('pointerdown', (pointer) => {
-            if(!this.selectedPieceId) return;
-
-            const targetCoords = getGridCoordsFromPixels(pointer.x, pointer.y, gridConfig);
-            const isValidMove = this.movablePositions.some(p => p.x === targetCoords.x && p.y === targetCoords.y);
-
-            if(isValidMove) {
-                movePiece(this.selectedPieceId, targetCoords);
+            if (this.isReplayMode || this.gameOver || !this.selectedPieceId) return;
+            const targetCoords = getGridCoordsFromPixels(pointer.x, pointer.y, this.gridConfig);
+            if (this.movablePositions.some(p => p.x === targetCoords.x && p.y === targetCoords.y)) {
+                this.movePiece(this.selectedPieceId, targetCoords);
             } else {
-                if (this.pieceSpriteMap[this.selectedPieceId]) {
-                    this.pieceSpriteMap[this.selectedPieceId].setScale(1);
-                }
-                this.selectedPieceId = null;
-                this.movablePositions = [];
-                displayMovablePositions();
+                this.deselectPiece();
             }
         });
 
         this.input.on('gameobjectdown', (pointer, gameObject) => {
-            if (this.pieceSpriteMap[gameObject.id]) {
-                clickPiece(pointer, gameObject);
-            }
+            if (this.isReplayMode || !this.pieceSpriteMap[gameObject.id]) return;
+            this.clickPiece(pointer, gameObject);
         });
 
-        if (newGameButton) {
-            newGameButton.addEventListener('click', (e) => {
-                e.preventDefault();
-                createRoom()
-            });
+        this.createRoom();
+    }
+
+    updateBoardState(newBoardState) {
+        if (!newBoardState) return console.error('업데이트할 새로운 board_state가 없습니다.');
+        
+        const hasStateChanged = JSON.stringify(this.board_state) !== JSON.stringify(newBoardState);
+        this.board_state = newBoardState;
+        this.renderBoard(this.board_state.pieces);
+        this.uiManager.updateTurnDisplay(this.board_state, this.room.players);
+        
+        if (hasStateChanged && !this.isReplayMode) {
+            GameApi.saveGame(this.room.id, this.board_state);
+        }
+    }
+
+    renderBoard(pieceState) {
+        if (!pieceState) return;
+        Object.values(this.pieceSpriteMap).forEach(sprite => sprite.destroy());
+        this.pieceSpriteMap = {};
+        const allPieces = [...pieceState.player1, ...pieceState.player2];
+        allPieces.forEach(piece => {
+            if (piece.alive) {
+                const assetKey = getPieceAssetKey(piece);
+                const pixelCoords = getPixelCoords(piece.x, piece.y, this.gridConfig);
+                const sprite = this.add.sprite(pixelCoords.x, pixelCoords.y, assetKey).setInteractive();
+                sprite.id = piece.id;
+                this.pieceSpriteMap[piece.id] = sprite;
+            }
+        });
+    }
+
+    displayMovablePositions() {
+        if (this.movableMarkers) this.movableMarkers.destroy();
+        this.movableMarkers = this.add.graphics();
+        this.movableMarkers.fillStyle(0x0000ff, 0.4);
+        const radius = this.gridConfig.tileWidth / 4;
+        this.movablePositions.forEach((pos) => {
+            const pixelCoords = getPixelCoords(pos.x, pos.y, this.gridConfig);
+            this.movableMarkers.fillCircle(pixelCoords.x, pixelCoords.y, radius);
+        });
+    }
+
+    deselectPiece() {
+        if (this.selectedPieceId && this.pieceSpriteMap[this.selectedPieceId]) {
+            this.pieceSpriteMap[this.selectedPieceId].setScale(1);
+        }
+        this.selectedPieceId = null;
+        this.movablePositions = [];
+        this.displayMovablePositions();
+    }
+
+
+    endGame(winnerRole) {
+        if (this.gameOver) return;
+        this.gameOver = true;
+        this.finalBoardState = JSON.parse(JSON.stringify(this.board_state));
+        this.deselectPiece();
+
+        this.uiManager.setSurrenderButtonEnabled(false);
+
+        const winnerPlayer = this.room.players.find(p => p.role === winnerRole);
+        const winnerInfo = { nickname: winnerPlayer ? winnerPlayer.nickname : (winnerRole === 'player1' ? '초' : '한') };
+        this.winnerInfo = winnerInfo;
+        this.uiManager.showGameOverModal(winnerInfo);
+    }
+
+    surrenderGame() {
+        if (this.gameOver) return;
+        const myPlayerId = localStorage.getItem('myPlayerId');
+        const myPlayer = this.room.players.find(p => p.id === myPlayerId);
+        const winnerRole = myPlayer ? (myPlayer.role === 'player1' ? 'player2' : 'player1') : (this.board_state.turn === 'player1' ? 'player2' : 'player1');
+        this.endGame(winnerRole);
+    }
+
+    async createRoom() {
+        try {
+            const { room_id } = await GameApi.createRoom();
+            this.room.id = room_id;
+            this.uiManager.showNicknameModal();
+        } catch (error) { console.error("룸 생성 실패:", error); }
+    }
+
+    async joinRoomWithNickname(nickname) {
+        let playerId = localStorage.getItem('myPlayerId');
+        if (!playerId) {
+            const {v4: uuidv4} = await import('https://cdn.skypack.dev/uuid');
+            playerId = uuidv4();
+            localStorage.setItem('myPlayerId', playerId);
+        }
+        try {
+            const joinInfo = { room_id: this.room.id, player_id: playerId, nickname: nickname };
+            const { room } = await GameApi.joinRoom(joinInfo);
+            const myPlayer = room.players.find(p => p.id === joinInfo.player_id);
+            if (myPlayer) myPlayer.nickname = joinInfo.nickname;
+            this.room = room;
+            this.handleGameStart();
+        } catch (error) { console.error("룸 참가 실패:", error); }
+    }
+
+    async handleGameStart() {
+        if (this.room.players.length === 2) {
+            try {
+                const { board_state } = await GameApi.resetGame();
+                this.updateBoardState(board_state);
+                const updatedStatus = await GameApi.setStatus(this.room.id, 'playing');
+                if (updatedStatus?.status) this.room.status = updatedStatus.status;
+            } catch (error) { console.error("게임 시작 처리 중 오류:", error); }
+        }
+    }
+
+    async loadGame() {
+        if (!this.room.id) return console.error("방 ID가 없습니다.");
+        try {
+            const data = await GameApi.loadGame(this.room.id);
+            this.updateBoardState(data.board_state);
+        } catch(error) { console.error("게임 불러오기 실패:", error); }
+    }
+    
+    async enterReplayMode() {
+        if (!this.room.id) return alert("게임 기록을 불러올 방 정보가 없습니다.");
+        try {
+            const history = await GameApi.getHistory(this.room.id);
+            if (!history || history.length === 0) return alert("저장된 게임 기록이 없습니다.");
+
+            this.isReplayMode = true;
+            this.gameHistory = history;
+            this.currentHistoryIndex = 0;
+            this.uiManager.showReplayControls();
+            this.showHistoryStep(this.currentHistoryIndex);
+        } catch (error) {
+            console.error("게임 기록 로딩 실패:", error);
+            alert("게임 기록을 불러오는 데 실패했습니다.");
+        }
+    }
+
+    exitReplayMode() {
+        this.isReplayMode = false;
+        this.currentHistoryIndex = -1;
+        this.gameHistory = [];
+        this.updateBoardState(this.finalBoardState);
+        this.uiManager.showGameControls();
+    }
+    
+    showHistoryStep(index) {
+        if (index < 0 || index >= this.gameHistory.length) return;
+        const historyEntry = this.gameHistory[index];
+        this.renderBoard(historyEntry.board_state.pieces);
+        this.uiManager.updateTurnDisplay(historyEntry.board_state, this.room.players);
+        this.uiManager.updateHistoryTurnDisplay(index, this.gameHistory.length);
+    }
+    
+    showNextStep() {
+        if (this.currentHistoryIndex < this.gameHistory.length - 1) {
+            this.currentHistoryIndex++;
+            this.showHistoryStep(this.currentHistoryIndex);
+        }
+    }
+    
+    showPreviousStep() {
+        if (this.currentHistoryIndex > 0) {
+            this.currentHistoryIndex--;
+            this.showHistoryStep(this.currentHistoryIndex);
+        }
+    }
+
+    async clickPiece(pointer, clickedSprite) {
+        if (this.gameOver) return;
+
+        const clickedPieceId = clickedSprite.id;
+        const allPieces = [...this.board_state.pieces.player1, ...this.board_state.pieces.player2];
+        const clickedPieceObject = allPieces.find(p => p.id === clickedPieceId);
+
+        if (!clickedPieceObject) return;
+        
+        if (this.selectedPieceId === clickedPieceId) {
+            this.deselectPiece();
+            return;
         }
 
-        createRoom();
+        if (clickedPieceObject.owner !== this.board_state.turn) {
+            if (this.selectedPieceId) {
+                const targetCoords = getGridCoordsFromPixels(pointer.x, pointer.y, this.gridConfig);
+                if (this.movablePositions.some(p => p.x === targetCoords.x && p.y === targetCoords.y)) {
+                    this.movePiece(this.selectedPieceId, targetCoords);
+                } else {
+                    this.deselectPiece();
+                }
+            }
+            return;
+        }
+
+        this.deselectPiece();
+        this.selectedPieceId = clickedPieceId;
+        this.pieceSpriteMap[this.selectedPieceId].setScale(1.1);
+
+        try {
+            const { movablePositions } = await GameApi.getMovable(this.board_state, clickedPieceObject);
+            this.movablePositions = movablePositions;
+            this.displayMovablePositions();
+        } catch (error) {
+            this.movablePositions = [];
+            this.displayMovablePositions();
+        }
+    }
+
+    async movePiece(pieceId, targetCoords) {
+        try {
+            const { newBoardState, capturedPiece } = await GameApi.movePiece(this.board_state, pieceId, targetCoords);
+            this.deselectPiece();
+            this.updateBoardState(newBoardState);
+            
+            if (capturedPiece && (capturedPiece.type === 'king' || capturedPiece.type === 'hanwang' || capturedPiece.type === 'chowang')) {
+                this.endGame(capturedPiece.owner === 'player1' ? 'player2' : 'player1');
+            }
+        } catch(error) { console.error("기물 이동 실패:", error); this.deselectPiece(); }
     }
 }
 

@@ -3,70 +3,69 @@ body {
     flex-direction: column;
     align-items: center;
     min-height: 100vh;
-    background-color: #f5f5dc;
+    background-image: url('./assets/background_wood.png');
+    background-size: cover;
+    background-repeat: no-repeat;
+    background-position: center center;
 }
 
 .title {
     color: burlywood;
     text-align: center;
+    font-family: 'Song Myung', serif;
+}
+
+.ui-panel {
+    width: 700px;
+    padding: 10px;
+    border: 2px outset #8B4513;
+    border-radius: 8px;
+    background-color: rgba(245, 245, 220, 0.8);
 }
 
 .score-board {
     display: flex;
     flex-direction: row;
     align-items: center;
-    padding: 5px;
-    width: 800px;
-    border: 1px solid black;
-    border-radius: 8px;
-    background-color: #f5f5ef;
-    padding-top: 10px;
-    padding-bottom: 10px;
+    justify-content: space-around;
     margin-bottom: 20px;
+    font-size: 1.2em;
+    font-family: 'Gowun Dodum', sans-serif;
 }
 
-.turn-color {
-    width: 20px;
-    height: 20px;
-    background-color: green;
-    border-radius: 50%;
-    margin-right: 10px;
+.player-info {
+    padding: 5px 10px;
+    border-radius: 5px;
+    transition: all 0.3s ease;
 }
 
-.turn {
-    flex-grow: 1;
+#player1-info {
+    color: #007bff;
 }
 
-.button-board {
-    margin-right: 10px;
+#player1-info.active-turn {
+    color: #33aaff;
 }
 
-.new-game {
-    width: 100px;
+#player2-info {
+    color: #dc3545;
 }
 
-.save-game {
-    width: 100px;
+#player2-info.active-turn {
+    color: #ff6666;
 }
 
-.load-game {
-    width: 100px;
+.active-turn {
+    font-weight: 900;
+    transform: scale(1.15);
 }
 
-.howToPlay {
-    width: 800px;
-    padding: 5px;
-    border: 1px solid black;
-    border-radius: 8px;
-    background-color: #f5f5ef;
-    padding-top: 10px;
-    padding-bottom: 10px;
+.how-to-play {
     margin-top: 20px;
 }
 
-/* Modal Styles */
 .modal-overlay {
-    display: none; /* Hidden by default */
+    display: none;
     position: fixed;
     top: 0;
     left: 0;
@@ -83,17 +82,32 @@ body {
 }
 
 .modal-content {
-    background-color: #fff;
-    padding: 20px 30px;
+    background-color: rgba(255, 253, 248, 0.95);
+    padding: 30px 40px;
+    border: 2px outset #CD853F;
     border-radius: 8px;
     text-align: center;
     box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    min-width: 350px;
 }
 
 .modal-content h2 {
     margin-top: 0;
     margin-bottom: 20px;
 }
+
+.error-message {
+    color: red;
+    font-size: 0.9em;
+    height: 1.2em;
+    margin-top: 10px;
+    visibility: hidden;
+}
+
+.error-message.show {
+    visibility: visible;
+}
+
 
 #nickname-form input {
     padding: 10px;
@@ -103,16 +117,121 @@ body {
     font-size: 1em;
 }
 
-#nickname-form button {
-    padding: 10px 20px;
-    border: none;
-    background-color: #007bff;
-    color: white;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 1em;
+
+#game-container {
+    border: 5px outset #8B4513;
+    border-radius: 10px;
+    box-shadow: 10px 10px 30px rgba(0, 0, 0, 0.5), inset 0 0 10px rgba(0, 0, 0, 0.2);
+    overflow: hidden;
+    position: relative;
 }
 
-#nickname-form button:hover {
-    background-color: #0056b3;
+#action-bar {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin: 20px 0;
+}
+
+.hidden {
+    display: none !important;
+}
+
+#history-turn-display {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 80px;
+    font-weight: bold;
+    color: #333;
+}
+
+.button-board {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+#replay-controls {
+    width: 100%;
+    justify-content: space-between;
+}
+
+.replay-nav {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.button-board button,
+.modal-content button {
+    width: 100px;
+    padding: 8px 12px;
+    font-size: 1em;
+    font-weight: bold;
+    color: #6B4226;
+    background-color: #F5DEB3;
+    border: 2px solid #D2B48C;
+    border-radius: 8px;
+    cursor: pointer;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    transition: all 0.2s ease;
+    text-align: center;
+    box-sizing: border-box;
+}
+
+.button-board button:hover,
+.modal-content button:hover {
+    background-color: #DEB887;
+    border-color: #A0522D;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+    transform: translateY(1px);
+}
+
+.button-board button:active,
+.modal-content button:active {
+    background-color: #CD853F;
+    border-color: #8B4513;
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.4);
+    transform: translateY(2px);
+}
+
+.button-board button:disabled,
+.modal-content button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    filter: grayscale(100%);
+}
+
+.surrender-game.disabled {
+    background-color: #f8d7da !important;
+    border-color: #f5c6cb !important;
+    color: #721c24 !important;
+    opacity: 0.4;
+    cursor: not-allowed;
+    filter: grayscale(100%);
+}
+
+.surrender-game {
+    background-color: #f8d7da !important;
+    border-color: #f5c6cb !important;
+    color: #721c24 !important;
+}
+
+.surrender-game:hover {
+    background-color: #f1b0b7 !important;
+    border-color: #ee9a9a !important;
+}
+
+.surrender-game:active {
+    background-color: #e68e95 !important;
+    border-color: #e06c6c !important;
+}
+
+.how-to-play,
+.modal-content,
+.button-board button,
+.modal-content button,
+#nickname-form input {
+    font-family: 'Gowun Dodum', sans-serif;
 }
